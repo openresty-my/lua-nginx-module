@@ -816,7 +816,7 @@ foo = hello
 
 
 
-=== TEST 31: incr key (key exists)
+=== TEST 31: replace key (key exists)
 --- http_config
     lua_shared_dict dogs 1m;
 --- config
@@ -950,7 +950,7 @@ foo = 10534
 
 
 
-=== TEST 36: replace key (key not exists)
+=== TEST 36: incr key (key not exists)
 --- http_config
     lua_shared_dict dogs 1m;
 --- config
@@ -973,7 +973,7 @@ foo = nil
 
 
 
-=== TEST 37: replace key (key expired)
+=== TEST 37: incr key (key expired)
 --- http_config
     lua_shared_dict dogs 1m;
 --- config
@@ -1584,7 +1584,7 @@ cur value:  hello hello hello hello hello hello hello hello hello hello1
         content_by_lua '
             local dogs = ngx.shared.dogs
             dogs:set("foo", 32, 0.01)
-            dogs:set("blah", 33, 0.1)
+            dogs:set("blah", 33, 0.3)
             ngx.sleep(0.02)
             local val, flags, stale = dogs:get_stale("foo")
             ngx.say(val, ", ", flags, ", ", stale)
@@ -2429,3 +2429,22 @@ nil
 nil
 --- no_error_log
 [error]
+
+
+
+=== TEST 92: invalid expire time
+--- http_config
+    lua_shared_dict dogs 1m;
+--- config
+    location = /test {
+        content_by_lua '
+            local dogs = ngx.shared.dogs
+            dogs:set("foo", 32, -1)
+        ';
+    }
+--- request
+GET /test
+--- response_body_like: 500 Internal Server Error
+--- error_code: 500
+--- error_log
+bad "exptime" argument

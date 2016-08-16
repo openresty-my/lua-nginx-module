@@ -197,10 +197,12 @@ ngx_http_lua_inject_socket_tcp_api(ngx_log_t *log, lua_State *L)
 {
     ngx_int_t         rc;
 
-    lua_createtable(L, 0, 3 /* nrec */);    /* ngx.socket */
+    lua_createtable(L, 0, 4 /* nrec */);    /* ngx.socket */
 
     lua_pushcfunction(L, ngx_http_lua_socket_tcp);
-    lua_setfield(L, -2, "tcp");
+    lua_pushvalue(L, -1);
+    lua_setfield(L, -3, "tcp");
+    lua_setfield(L, -2, "stream");
 
     {
         const char  buf[] = "local sock = ngx.socket.tcp()"
@@ -384,7 +386,8 @@ ngx_http_lua_socket_tcp(lua_State *L)
                                | NGX_HTTP_LUA_CONTEXT_ACCESS
                                | NGX_HTTP_LUA_CONTEXT_CONTENT
                                | NGX_HTTP_LUA_CONTEXT_TIMER
-                               | NGX_HTTP_LUA_CONTEXT_SSL_CERT);
+                               | NGX_HTTP_LUA_CONTEXT_SSL_CERT
+                               | NGX_HTTP_LUA_CONTEXT_SSL_SESS_FETCH);
 
     lua_createtable(L, 3 /* narr */, 1 /* nrec */);
     lua_pushlightuserdata(L, &ngx_http_lua_tcp_socket_metatable_key);
@@ -442,7 +445,8 @@ ngx_http_lua_socket_tcp_connect(lua_State *L)
                                | NGX_HTTP_LUA_CONTEXT_ACCESS
                                | NGX_HTTP_LUA_CONTEXT_CONTENT
                                | NGX_HTTP_LUA_CONTEXT_TIMER
-                               | NGX_HTTP_LUA_CONTEXT_SSL_CERT);
+                               | NGX_HTTP_LUA_CONTEXT_SSL_CERT
+                               | NGX_HTTP_LUA_CONTEXT_SSL_SESS_FETCH);
 
     luaL_checktype(L, 1, LUA_TTABLE);
 
@@ -1179,8 +1183,8 @@ ngx_http_lua_socket_tcp_sslhandshake(lua_State *L)
     /* Lua function arguments: self [,session] [,host] [,verify] */
 
     n = lua_gettop(L);
-    if (n < 1 && n > 4) {
-        return luaL_error(L, "ngx.socket connect: expecting 1 ~ 4 "
+    if (n < 1 || n > 5) {
+        return luaL_error(L, "ngx.socket connect: expecting 1 ~ 5 "
                           "arguments (including the object), but seen %d", n);
     }
 
@@ -2874,6 +2878,7 @@ ngx_http_lua_socket_send(ngx_http_request_t *r,
     }
 
     if (n == NGX_ERROR) {
+        c->error = 1;
         u->socket_errno = ngx_socket_errno;
         ngx_http_lua_socket_handle_write_error(r, u,
                                                NGX_HTTP_LUA_SOCKET_FT_ERROR);
@@ -4483,7 +4488,7 @@ ngx_http_lua_socket_tcp_setkeepalive(lua_State *L)
     if (spool == NULL) {
         /* create a new socket pool for the current peer key */
 
-        if (n == 3) {
+        if (n >= 3 && !lua_isnil(L, 3)) {
             pool_size = luaL_checkinteger(L, 3);
 
         } else {
@@ -4586,7 +4591,7 @@ ngx_http_lua_socket_tcp_setkeepalive(lua_State *L)
         ngx_del_timer(c->write);
     }
 
-    if (n >= 2) {
+    if (n >= 2 && !lua_isnil(L, 2)) {
         timeout = (ngx_msec_t) luaL_checkinteger(L, 2);
 
     } else {
@@ -4899,7 +4904,7 @@ ngx_http_lua_socket_downstream_destroy(lua_State *L)
 {
     ngx_http_lua_socket_tcp_upstream_t     *u;
 
-    dd("downstream destory");
+    dd("downstream destroy");
 
     u = lua_touserdata(L, 1);
     if (u == NULL) {
